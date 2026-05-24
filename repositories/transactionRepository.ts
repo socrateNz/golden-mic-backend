@@ -19,6 +19,8 @@ export interface TransactionRow {
   user_agent: string | null;
   points_awarded: number;
   idempotency_key: string | null;
+  /** Fin de validité de la session de paiement (TTL côté app, voir NOTCHPAY_PAYMENT_TTL_MINUTES). */
+  payment_expires_at?: string | null;
   created_at: string;
   updated_at: string;
 }

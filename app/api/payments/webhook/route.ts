@@ -28,11 +28,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Corps JSON invalide' }, { status: 400 });
   }
 
-  // 2. Traite uniquement les paiements complétés
-  if (event.event !== 'payment.complete') {
-    return NextResponse.json({ received: true, processed: false });
-  }
-
   try {
     const result = await voteService.processWebhook(event, { ipAddress: ip, userAgent });
     return NextResponse.json({ received: true, ...result });
