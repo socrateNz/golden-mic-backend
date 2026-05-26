@@ -46,6 +46,16 @@ export const transactionRepository = {
     return data as TransactionRow;
   },
 
+  async findByReferenceOrNotchpayId(refOrId: string) {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .or(`reference.eq.${refOrId},notchpay_id.eq.${refOrId}`)
+      .single();
+    if (error) return null;
+    return data as TransactionRow;
+  },
+
   async findByIdempotencyKey(key: string) {
     const { data, error } = await supabase
       .from('transactions')

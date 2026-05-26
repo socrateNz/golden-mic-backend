@@ -266,7 +266,7 @@ async function applyTerminalPaymentFromWebhook(
     return { processed: false as const, message: 'Référence manquante dans le webhook' };
   }
 
-  const transaction = await transactionRepository.findByReference(reference);
+  const transaction = await transactionRepository.findByReferenceOrNotchpayId(reference);
   if (!transaction) {
     return { processed: false as const, message: 'Transaction introuvable' };
   }
@@ -310,7 +310,7 @@ async function finalizeFromPaymentData(
   const status = data?.status as string;
   const amount = Number(data?.amount ?? 0);
 
-  const transaction = await transactionRepository.findByReference(reference);
+  const transaction = await transactionRepository.findByReferenceOrNotchpayId(reference);
   if (!transaction) {
     await auditRepository.logFraud({
       ip_address: meta.ipAddress,
