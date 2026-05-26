@@ -125,8 +125,8 @@ export async function createNotchPayTransaction(params: CreateTransactionParams)
   }
 
   const initData = await initRes.json();
-  const trxRef = initData.transaction?.reference || params.reference;
-  const notchpayId = initData.transaction?.id || null;
+  const trxRef = initData.transaction?.reference || initData.data?.reference || params.reference;
+  const notchpayId = initData.transaction?.id || initData.data?.id || initData.id || null;
 
   let directChargeData: any = null;
   let action = initData.action || null;

@@ -129,10 +129,24 @@ async function notchPayGetPaymentJson(referenceOrId: string): Promise<{
 
 function transactionObjectFromBody(body: Record<string, unknown> | null): Record<string, unknown> | null {
   if (!body) return null;
+
+  // Option 1 : Objet transaction encapsulé (réponse d'initiation)
   const tx = body.transaction;
   if (typeof tx === 'object' && tx !== null && !Array.isArray(tx)) {
     return tx as Record<string, unknown>;
   }
+
+  // Option 2 : Objet data encapsulé (réponse standard GET /payments/{ref})
+  const data = body.data;
+  if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+    return data as Record<string, unknown>;
+  }
+
+  // Option 3 : Propriétés au premier niveau (si le corps a directement un status)
+  if (typeof body.status === 'string') {
+    return body;
+  }
+
   return null;
 }
 
