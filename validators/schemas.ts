@@ -13,7 +13,7 @@ export const initiateVoteSchema = z.object({
     .string()
     .trim()
     .regex(/^(237)?[62][0-9]{8}$/, 'Numéro camerounais invalide')
-    .optional(),
+    .min(1, 'Numéro de téléphone requis'),
 });
 
 export type InitiateVoteInput = z.infer<typeof initiateVoteSchema>;
