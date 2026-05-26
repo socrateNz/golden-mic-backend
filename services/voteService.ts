@@ -444,7 +444,7 @@ export const voteService = {
     }
 
     await transactionRepository.updateStatus(transaction.id, 'processing', {
-      notchpay_id: notchPayResult.notchpayId,
+      notchpay_id: notchPayResult.reference || notchPayResult.notchpayId,
       payment_expires_at: paymentExpiresAtIso,
       payment_method: notchPayResult.channel || null,
     });
