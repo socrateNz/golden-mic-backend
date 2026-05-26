@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { transactionRepository } from '@/repositories/transactionRepository';
+import { voteService } from '@/services/voteService';
 import { handleCors, withCors } from '@/middleware/cors';
 
 export async function OPTIONS(req: NextRequest) {
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const transaction = await transactionRepository.findByReference(reference);
+    let transaction = await transactionRepository.findByReference(reference);
 
     if (!transaction) {
       return withCors(
@@ -34,6 +35,17 @@ export async function GET(req: NextRequest) {
         ),
         origin
       );
+    }
+
+    // Si la transaction est en attente, on interroge NotchPay de manière synchrone
+    // pour pallier aux éventuels retards de webhook et utiliser la ref appropriée
+    if (transaction.status === 'pending' || transaction.status === 'processing') {
+      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? '127.0.0.1';
+      const userAgent = req.headers.get('user-agent') ?? 'unknown';
+      const syncedTransaction = await voteService.syncTransactionStatus(reference, { ipAddress: ip, userAgent });
+      if (syncedTransaction) {
+        transaction = syncedTransaction;
+      }
     }
 
     return withCors(

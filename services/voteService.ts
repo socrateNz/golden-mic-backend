@@ -559,6 +559,51 @@ export const voteService = {
   },
 
   /**
+   * Synchronise l'état d'une transaction avec NotchPay (vérification unique synchrone).
+   * Utile pour la route check-status lorsque le statut est encore 'pending' ou 'processing'.
+   */
+  async syncTransactionStatus(reference: string, meta: { ipAddress: string; userAgent: string }) {
+    const row = await transactionRepository.findByReference(reference);
+    if (!row || !isTransactionAwaitingAggregator(row)) {
+      return row;
+    }
+
+    if (isPaymentSessionExpired(row)) {
+      await expirePaymentSessionLocally(row, reference, meta);
+      return await transactionRepository.findByReference(reference);
+    }
+
+    const { transaction: notchTx } = await fetchNotchPayTransaction(reference, row.notchpay_id);
+    
+    if (!notchTx) {
+      return row; // Ne rien faire si introuvable chez NotchPay
+    }
+
+    const payStatus = String(notchTx.status ?? '').toLowerCase();
+
+    if (payStatus === 'complete') {
+      const synthetic: Record<string, unknown> = {
+        ...notchTx,
+        reference,
+        status: 'complete',
+        amount: notchTx.amount,
+      };
+      try {
+        await finalizeFromPaymentData(synthetic, { ...meta, actorType: 'system' });
+      } catch (err) {
+        console.error('[vote:sync] finalisation impossible', { reference, error: err });
+      }
+    } else if (payStatus === 'failed' || payStatus === 'expired') {
+      await transactionRepository.updateStatus(row.id, 'failed');
+    } else if (payStatus === 'canceled' || payStatus === 'cancelled') {
+      await transactionRepository.updateStatus(row.id, 'cancelled');
+    }
+
+    // Retourne l'état mis à jour
+    return await transactionRepository.findByReference(reference);
+  },
+
+  /**
    * Webhook NotchPay : événements de paiement (source de vérité si le GET /payments/{ref} n’est pas disponible).
    */
   async processWebhook(
@@ -584,3 +629,4 @@ export const voteService = {
     }
   },
 };
+
