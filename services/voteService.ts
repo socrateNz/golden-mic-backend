@@ -4,6 +4,7 @@ import { voteRepository } from '@/repositories/voteRepository';
 import { auditRepository } from '@/repositories/auditRepository';
 import { calculatePoints, generateTransactionReference, generateIdempotencyKey } from '@/utils/helpers';
 import { sendVoteConfirmationEmail } from '@/lib/resend';
+import { createNotchPayTransaction } from '@/lib/notchpay';
 import type { InitiateVoteInput } from '@/validators/schemas';
 import type { TransactionRow } from '@/repositories/transactionRepository';
 
@@ -15,6 +16,29 @@ const AGGREGATOR_POLL_MAX_ROUNDS = 120;
 const AGGREGATOR_POLL_STOP_AFTER_CONSECUTIVE_404 = 3;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+async function updatePaymentWithRetry<T>(
+  fn: () => Promise<T>,
+  retries = 5,
+  delay = 500
+): Promise<T> {
+  let attempt = 0;
+  while (attempt < retries) {
+    try {
+      return await fn();
+    } catch (err) {
+      attempt++;
+      if (attempt >= retries) {
+        console.error(`[voteService:updatePaymentWithRetry] All ${retries} attempts failed. Error:`, err);
+        throw err;
+      }
+      const backoffDelay = delay * Math.pow(2, attempt - 1);
+      console.warn(`[voteService:updatePaymentWithRetry] Attempt ${attempt} failed. Retrying in ${backoffDelay}ms...`, err);
+      await sleep(backoffDelay);
+    }
+  }
+  throw new Error('Unreachable code in retry helper');
+}
 
 type PaymentActor = 'webhook' | 'system';
 
@@ -309,21 +333,23 @@ async function finalizeFromPaymentData(
 
   const points = calculatePoints(transaction.amount);
 
-  await voteRepository.create({
-    transaction_id: transaction.id,
-    candidate_id: transaction.candidate_id,
-    points,
-    amount: transaction.amount,
-    voter_phone: transaction.voter_phone ?? undefined,
-    voter_name: transaction.voter_name ?? undefined,
-    ip_address: meta.ipAddress,
-  });
+  await updatePaymentWithRetry(async () => {
+    await voteRepository.create({
+      transaction_id: transaction.id,
+      candidate_id: transaction.candidate_id,
+      points,
+      amount: transaction.amount,
+      voter_phone: transaction.voter_phone ?? undefined,
+      voter_name: transaction.voter_name ?? undefined,
+      ip_address: meta.ipAddress,
+    });
 
-  await candidateRepository.incrementPoints(transaction.candidate_id, points);
+    await candidateRepository.incrementPoints(transaction.candidate_id, points);
 
-  await transactionRepository.markWebhookValidated(transaction.id, {
-    ...data,
-    idempotency_key: idempotencyKey,
+    await transactionRepository.markWebhookValidated(transaction.id, {
+      ...data,
+      idempotency_key: idempotencyKey,
+    });
   });
 
   if (transaction.voter_email && transaction.voter_name) {
@@ -381,69 +407,32 @@ export const voteService = {
     const ttlMinutes = getNotchPayPaymentTtlMinutes();
     const paymentExpiresAtIso = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString();
 
-    const notchPayload: Record<string, unknown> = {
-      amount: input.amount,
-      currency: 'XAF',
-      email: input.voterEmail ?? 'vote@golden-mic-237.cm',
-      phone: input.voterPhone,
-      paymentPhone: input.voterPhone,
-      reference,
-      description: `Vote pour ${candidate.artist_name} — Golden Mic 237`,
-      callback: `${process.env.FRONTEND_URL}/vote/success?ref=${reference}`,
-      metadata: {
-        app: 'golden-mic-237',
-        payment_ttl_minutes: ttlMinutes,
-        payment_expires_at: paymentExpiresAtIso,
-      },
-    };
-
-    // Champ non documenté dans l’OpenAPI publique : activer seulement si le support NotchPay confirme la prise en charge.
-    if (process.env.NOTCHPAY_PAYMENT_SEND_EXPIRES_AT === '1' || process.env.NOTCHPAY_PAYMENT_SEND_EXPIRES_AT === 'true') {
-      notchPayload.expires_at = paymentExpiresAtIso;
-    }
-
-    const notchPayResponse = await fetch(`${NOTCHPAY_BASE_URL}/payments`, {
-      method: 'POST',
-      headers: {
-        Authorization: process.env.NOTCHPAY_PUBLIC_KEY!,
-        'X-Grant': process.env.NOTCHPAY_SECRET_KEY!,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(notchPayload),
-    });
-
-    console.log('[vote:initiate] NotchPay HTTP response', {
-      reference,
-      status: notchPayResponse.status,
-      ok: notchPayResponse.ok,
-    });
-
-    if (!notchPayResponse.ok) {
-      const err = await notchPayResponse.json();
-      console.error('[vote:initiate] NotchPay error payload', {
+    let notchPayResult;
+    try {
+      notchPayResult = await createNotchPayTransaction({
+        amount: input.amount,
+        email: input.voterEmail ?? 'vote@golden-mic-237.cm',
+        phone: input.voterPhone,
         reference,
-        status: notchPayResponse.status,
-        error: err,
-        errorJson: JSON.stringify(err),
+        description: `Vote pour ${candidate.artist_name} — Golden Mic 237`,
+        callbackUrl: `${process.env.FRONTEND_URL}/vote/success?ref=${reference}`,
+        ipAddress: meta.ipAddress,
+        ttlMinutes,
+        paymentExpiresAtIso,
+      });
+    } catch (err: any) {
+      console.error('[vote:initiate] Direct NotchPay creation error', {
+        reference,
+        error: err.message,
       });
       await transactionRepository.updateStatus(transaction.id, 'failed');
-      throw new Error(err.message ?? 'Erreur NotchPay lors de la création du paiement');
+      throw err;
     }
 
-    const notchPayData = (await notchPayResponse.json()) as Record<string, unknown>;
-    const resolvedNotchpayId = extractNotchPayIdFromInitPayload(notchPayData);
-
-    console.log('[vote:initiate] NotchPay success payload', {
-      reference,
-      authorization_url: notchPayData?.authorization_url ?? null,
-      transaction_id: resolvedNotchpayId,
-      action: notchPayData?.action ?? null,
-      message: notchPayData?.message ?? null,
-    });
-
     await transactionRepository.updateStatus(transaction.id, 'processing', {
-      notchpay_id: resolvedNotchpayId,
+      notchpay_id: notchPayResult.notchpayId,
       payment_expires_at: paymentExpiresAtIso,
+      payment_method: notchPayResult.channel || null,
     });
 
     await auditRepository.log({
@@ -451,7 +440,7 @@ export const voteService = {
       entity_type: 'transaction',
       entity_id: transaction.id,
       actor_type: 'user',
-      details: { candidateId: input.candidateId, amount: input.amount, reference },
+      details: { candidateId: input.candidateId, amount: input.amount, reference, channel: notchPayResult.channel },
       ip_address: meta.ipAddress,
       user_agent: meta.userAgent,
     });
@@ -459,10 +448,10 @@ export const voteService = {
     return {
       transactionId: transaction.id,
       reference,
-      paymentUrl: notchPayData.authorization_url ?? notchPayData.checkout_url ?? null,
-      checkoutUrl: notchPayData.checkout_url ?? notchPayData.authorization_url ?? null,
-      action: notchPayData.action ?? null,
-      ussdMessage: notchPayData.message ?? null,
+      paymentUrl: notchPayResult.paymentUrl,
+      checkoutUrl: notchPayResult.checkoutUrl,
+      action: notchPayResult.action,
+      ussdMessage: notchPayResult.ussdMessage,
     };
   },
 

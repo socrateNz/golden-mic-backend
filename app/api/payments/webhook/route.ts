@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     console.log('[webhook:processed]', {
       event: eventType,
       reference,
-      processed: result.processed,
+      processed: (result as any).processed,
       status: (result as any).status,
     });
 
