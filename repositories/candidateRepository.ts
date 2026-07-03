@@ -136,4 +136,15 @@ export const candidateRepository = {
       .eq('id', id);
     if (error) throw error;
   },
+
+  async update(id: string, data: Partial<Omit<CandidateRow, 'id' | 'total_points' | 'vote_count' | 'rank' | 'created_at' | 'updated_at'>>) {
+    const { data: updated, error } = await supabase
+      .from('candidates')
+      .update(data)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return updated as CandidateRow;
+  },
 };
