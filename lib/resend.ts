@@ -44,21 +44,29 @@ export async function sendCandidateRegistrationEmail(params: {
   to: string;
   candidateName: string;
   artistName: string;
+  isApproved?: boolean;
 }) {
   try {
+    const isApproved = params.isApproved !== false; // Default to true now
     await resend.emails.send({
       from: process.env.RESEND_FROM_EMAIL!,
       to: params.to,
-      subject: `🎤 Inscription reçue — Golden Mic 237`,
+      subject: isApproved 
+        ? `🎤 Inscription validée — Golden Mic 237` 
+        : `🎤 Inscription reçue — Golden Mic 237`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #fff; padding: 32px; border-radius: 12px;">
           <div style="text-align: center; margin-bottom: 32px;">
             <h1 style="color: #f59e0b; font-size: 28px; margin: 0;">🎤 Golden Mic 237</h1>
           </div>
-          <h2 style="color: #fff;">Votre inscription est en cours de validation</h2>
+          <h2 style="color: #fff;">${isApproved ? 'Félicitations, votre profil est actif !' : 'Votre inscription est en cours de validation'}</h2>
           <p style="color: #d1d5db;">Bonjour <strong>${params.candidateName}</strong> (${params.artistName}),</p>
-          <p style="color: #d1d5db;">Votre dossier de candidature a bien été reçu. Notre équipe va le valider dans les plus brefs délais.</p>
-          <p style="color: #d1d5db;">Vous recevrez un email de confirmation dès que votre profil sera approuvé.</p>
+          <p style="color: #d1d5db;">
+            ${isApproved 
+              ? `Votre profil de candidat a été créé et validé avec succès par l'administrateur. Vous êtes désormais visible sur la plateforme et prêt à recevoir des votes !`
+              : `Votre dossier de candidature a bien été reçu. Notre équipe va le valider dans les plus brefs délais.`}
+          </p>
+          ${isApproved ? '' : '<p style="color: #d1d5db;">Vous recevrez un email de confirmation dès que votre profil sera approuvé.</p>'}
           <p style="color: #6b7280; font-size: 14px; margin-top: 32px;">L'équipe Golden Mic 237 🇨🇲</p>
         </div>
       `,

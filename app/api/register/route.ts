@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { candidateRepository } from '@/repositories/candidateRepository';
+import { auditRepository } from '@/repositories/auditRepository';
 import { candidateRegistrationSchema } from '@/validators/schemas';
 import { uploadImage } from '@/lib/cloudinary';
 import { generateSlug } from '@/utils/helpers';
 import { sendCandidateRegistrationEmail } from '@/lib/resend';
 import { handleCors, withCors } from '@/middleware/cors';
+
+function verifyAdminToken(req: NextRequest): boolean {
+  return req.headers.get('x-admin-token') === process.env.ADMIN_JWT_SECRET;
+}
 
 export async function OPTIONS(req: NextRequest) {
   return handleCors(req) ?? new NextResponse(null, { status: 204 });
@@ -14,6 +19,13 @@ export async function POST(req: NextRequest) {
   const origin = req.headers.get('origin');
   const corsCheck = handleCors(req);
   if (corsCheck) return corsCheck;
+
+  if (!verifyAdminToken(req)) {
+    return withCors(
+      NextResponse.json({ error: 'Non autorisé' }, { status: 401 }),
+      origin
+    );
+  }
 
   try {
     const formData = await req.formData();
@@ -78,9 +90,19 @@ export async function POST(req: NextRequest) {
       facebook_url: parsed.data.facebookUrl ?? null,
       tiktok_url: parsed.data.tiktokUrl ?? null,
       youtube_url: parsed.data.youtubeUrl ?? null,
-      status: 'pending',
+      status: 'approved',
       is_trending: false,
       rejection_reason: null,
+    });
+
+    // Log d'audit
+    await auditRepository.log({
+      event_type: 'candidate.created',
+      entity_type: 'candidate',
+      entity_id: candidate.id,
+      actor_type: 'admin',
+      details: { artist_name: candidate.artist_name, created_by: 'admin' },
+      severity: 'info',
     });
 
     // Email de confirmation
@@ -89,12 +111,13 @@ export async function POST(req: NextRequest) {
         to: parsed.data.email,
         candidateName: parsed.data.fullName,
         artistName: parsed.data.artistName,
+        isApproved: true,
       });
     }
 
     return withCors(
       NextResponse.json(
-        { success: true, message: 'Candidature reçue, en attente de validation', data: { id: candidate.id } },
+        { success: true, message: 'Candidat inscrit avec succès', data: { id: candidate.id } },
         { status: 201 }
       ),
       origin
