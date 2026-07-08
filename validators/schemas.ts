@@ -31,7 +31,7 @@ export const candidateRegistrationSchema = z.object({
     .string()
     .regex(/^(237)?[62][0-9]{8}$/, 'Numéro camerounais invalide'),
   email: z.string().email().optional(),
-  biography: z.string().min(50, 'Biographie minimum 50 caractères').max(2000),
+  biography: z.string().min(10, 'Biographie minimum 50 caractères').max(2000),
   instagramUrl: z.string().url().optional().or(z.literal('')),
   facebookUrl: z.string().url().optional().or(z.literal('')),
   tiktokUrl: z.string().url().optional().or(z.literal('')),
