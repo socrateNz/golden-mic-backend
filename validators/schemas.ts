@@ -22,6 +22,7 @@ export const candidateRegistrationSchema = z.object({
   fullName: z.string().min(2, 'Nom requis').max(255),
   artistName: z.string().min(2, 'Nom artiste requis').max(255),
   categoryId: z.string().uuid({ message: 'Catégorie invalide' }),
+  region: z.enum(['Douala', 'Yaoundé'], { message: 'Région requise' }),
   phone: z
     .string()
     .regex(/^(237)?[62][0-9]{8}$/, 'Numéro camerounais invalide'),
