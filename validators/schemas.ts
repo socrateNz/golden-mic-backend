@@ -21,22 +21,12 @@ export type InitiateVoteInput = z.infer<typeof initiateVoteSchema>;
 export const candidateRegistrationSchema = z.object({
   fullName: z.string().min(2, 'Nom requis').max(255),
   artistName: z.string().min(2, 'Nom artiste requis').max(255),
-  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide (YYYY-MM-DD)'),
-  region: z.enum([
-    'Adamaoua', 'Centre', 'Est', 'Extrême-Nord', 'Littoral',
-    'Nord', 'Nord-Ouest', 'Ouest', 'Sud', 'Sud-Ouest',
-  ]),
   categoryId: z.string().uuid({ message: 'Catégorie invalide' }),
   phone: z
     .string()
     .regex(/^(237)?[62][0-9]{8}$/, 'Numéro camerounais invalide'),
-  email: z.string().email().optional(),
+  email: z.string().email().optional().or(z.literal('')),
   biography: z.string().min(10, 'Biographie minimum 50 caractères').max(2000),
-  instagramUrl: z.string().url().optional().or(z.literal('')),
-  facebookUrl: z.string().url().optional().or(z.literal('')),
-  tiktokUrl: z.string().url().optional().or(z.literal('')),
-  youtubeUrl: z.string().url().optional().or(z.literal('')),
-  videoUrl: z.string().url().optional().or(z.literal('')),
 });
 
 export type CandidateRegistrationInput = z.infer<typeof candidateRegistrationSchema>;

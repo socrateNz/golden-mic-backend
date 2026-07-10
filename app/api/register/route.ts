@@ -34,17 +34,10 @@ export async function POST(req: NextRequest) {
     const rawData = {
       fullName: formData.get('fullName') as string,
       artistName: formData.get('artistName') as string,
-      dateOfBirth: formData.get('dateOfBirth') as string,
-      region: formData.get('region') as string,
       categoryId: formData.get('categoryId') as string,
       phone: formData.get('phone') as string,
       email: formData.get('email') as string | undefined,
       biography: formData.get('biography') as string,
-      instagramUrl: formData.get('instagramUrl') as string | undefined,
-      facebookUrl: formData.get('facebookUrl') as string | undefined,
-      tiktokUrl: formData.get('tiktokUrl') as string | undefined,
-      youtubeUrl: formData.get('youtubeUrl') as string | undefined,
-      videoUrl: formData.get('videoUrl') as string | undefined,
     };
 
     // Validation Zod
@@ -77,19 +70,19 @@ export async function POST(req: NextRequest) {
       full_name: parsed.data.fullName,
       artist_name: parsed.data.artistName,
       slug,
-      date_of_birth: parsed.data.dateOfBirth,
-      region: parsed.data.region,
+      date_of_birth: '2000-01-01',
+      region: 'Non spécifiée',
       category_id: parsed.data.categoryId,
       phone: parsed.data.phone,
-      email: parsed.data.email ?? null,
+      email: parsed.data.email || null,
       biography: parsed.data.biography,
       photo_url: photoUrl,
       photo_public_id: photoPublicId,
-      video_url: parsed.data.videoUrl ?? null,
-      instagram_url: parsed.data.instagramUrl ?? null,
-      facebook_url: parsed.data.facebookUrl ?? null,
-      tiktok_url: parsed.data.tiktokUrl ?? null,
-      youtube_url: parsed.data.youtubeUrl ?? null,
+      video_url: null,
+      instagram_url: null,
+      facebook_url: null,
+      tiktok_url: null,
+      youtube_url: null,
       status: 'approved',
       is_trending: false,
       rejection_reason: null,
@@ -107,12 +100,16 @@ export async function POST(req: NextRequest) {
 
     // Email de confirmation
     if (parsed.data.email) {
-      await sendCandidateRegistrationEmail({
-        to: parsed.data.email,
-        candidateName: parsed.data.fullName,
-        artistName: parsed.data.artistName,
-        isApproved: true,
-      });
+      try {
+        await sendCandidateRegistrationEmail({
+          to: parsed.data.email,
+          candidateName: parsed.data.fullName,
+          artistName: parsed.data.artistName,
+          isApproved: true,
+        });
+      } catch (emailError) {
+        console.error('Erreur lors de l\'envoi de l\'email de confirmation:', emailError);
+      }
     }
 
     return withCors(
@@ -122,8 +119,14 @@ export async function POST(req: NextRequest) {
       ),
       origin
     );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Erreur serveur';
-    return withCors(NextResponse.json({ error: message }, { status: 500 }), origin);
+  } catch (error: any) {
+    console.error("REGISTER ERROR:", error);
+    
+    if (error?.code === '23505') {
+      return withCors(NextResponse.json({ error: 'Un candidat avec ce nom d\'artiste existe déjà.' }, { status: 400 }), origin);
+    }
+    
+    const message = error?.message || 'Erreur serveur';
+    return withCors(NextResponse.json({ error: message, details: error }, { status: 500 }), origin);
   }
 }

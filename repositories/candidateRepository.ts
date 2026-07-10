@@ -147,4 +147,12 @@ export const candidateRepository = {
     if (error) throw error;
     return updated as CandidateRow;
   },
+
+  async delete(id: string) {
+    const { error } = await supabase
+      .from('candidates')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+  },
 };

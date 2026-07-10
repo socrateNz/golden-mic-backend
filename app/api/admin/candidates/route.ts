@@ -47,17 +47,10 @@ export async function PATCH(req: NextRequest) {
       const rawData = {
         fullName: formData.get('fullName') as string,
         artistName: formData.get('artistName') as string,
-        dateOfBirth: formData.get('dateOfBirth') as string,
-        region: formData.get('region') as string,
         categoryId: formData.get('categoryId') as string,
         phone: formData.get('phone') as string,
         email: formData.get('email') as string | undefined,
         biography: formData.get('biography') as string,
-        instagramUrl: formData.get('instagramUrl') as string | undefined,
-        facebookUrl: formData.get('facebookUrl') as string | undefined,
-        tiktokUrl: formData.get('tiktokUrl') as string | undefined,
-        youtubeUrl: formData.get('youtubeUrl') as string | undefined,
-        videoUrl: formData.get('videoUrl') as string | undefined,
       };
 
       // Validation Zod
@@ -91,17 +84,10 @@ export async function PATCH(req: NextRequest) {
         full_name: parsed.data.fullName,
         artist_name: parsed.data.artistName,
         slug,
-        date_of_birth: parsed.data.dateOfBirth,
-        region: parsed.data.region,
         category_id: parsed.data.categoryId,
         phone: parsed.data.phone,
-        email: parsed.data.email ?? null,
+        email: parsed.data.email || null,
         biography: parsed.data.biography,
-        video_url: parsed.data.videoUrl ?? null,
-        instagram_url: parsed.data.instagramUrl ?? null,
-        facebook_url: parsed.data.facebookUrl ?? null,
-        tiktok_url: parsed.data.tiktokUrl ?? null,
-        youtube_url: parsed.data.youtubeUrl ?? null,
         ...photoUpdateData,
       });
 
@@ -136,6 +122,41 @@ export async function PATCH(req: NextRequest) {
       details: { reason },
       severity: 'info',
     });
+    return withCors(NextResponse.json({ success: true }), origin);
+  } catch (error: any) {
+    console.error("UPDATE ERROR:", error);
+    if (error?.code === '23505') {
+      return withCors(NextResponse.json({ error: 'Un candidat avec ce nom d\'artiste existe déjà.' }, { status: 400 }), origin);
+    }
+    const message = error?.message || 'Erreur serveur';
+    return withCors(NextResponse.json({ error: message }, { status: 500 }), origin);
+  }
+}
+
+// DELETE /api/admin/candidates — Supprimer un candidat
+export async function DELETE(req: NextRequest) {
+  const origin = req.headers.get('origin');
+  if (!verifyAdminToken(req)) {
+    return withCors(NextResponse.json({ error: 'Non autorisé' }, { status: 401 }), origin);
+  }
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    if (!id) {
+      return withCors(NextResponse.json({ error: 'id requis' }, { status: 400 }), origin);
+    }
+    
+    await candidateRepository.delete(id);
+    
+    await auditRepository.log({
+      event_type: 'candidate.deleted',
+      entity_type: 'candidate',
+      entity_id: id,
+      actor_type: 'admin',
+      details: { deleted_by: 'admin' },
+      severity: 'warning',
+    });
+    
     return withCors(NextResponse.json({ success: true }), origin);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erreur serveur';
