@@ -139,12 +139,14 @@ export async function createNotchPayTransaction(params: CreateTransactionParams)
       phone: formattedPhone,
     });
 
+    const normalizedIp = (!params.ipAddress || params.ipAddress.includes(':')) ? '127.0.0.1' : params.ipAddress;
+
     const directPayload = {
       channel,
       data: {
         phone: formattedPhone,
       },
-      client_ip: params.ipAddress,
+      client_ip: normalizedIp,
     };
 
     const putRes = await fetch(`${NOTCHPAY_BASE_URL}/payments/${encodeURIComponent(trxRef)}`, {
