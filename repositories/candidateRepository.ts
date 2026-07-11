@@ -26,6 +26,13 @@ export interface CandidateRow {
   rank: number | null;
   created_at: string;
   updated_at: string;
+  jury_ecriture: number;
+  jury_technique: number;
+  jury_attitude: number;
+  jury_originalite: number;
+  social_likes: number;
+  social_comments: number;
+  social_shares: number;
   categories?: { name: string; slug: string } | null;
 }
 
@@ -137,7 +144,7 @@ export const candidateRepository = {
     if (error) throw error;
   },
 
-  async update(id: string, data: Partial<Omit<CandidateRow, 'id' | 'total_points' | 'vote_count' | 'rank' | 'created_at' | 'updated_at'>>) {
+  async update(id: string, data: Partial<Omit<CandidateRow, 'id' | 'total_points' | 'vote_count' | 'rank' | 'created_at' | 'updated_at' | 'jury_ecriture' | 'jury_technique' | 'jury_attitude' | 'jury_originalite' | 'social_likes' | 'social_comments' | 'social_shares'>>) {
     const { data: updated, error } = await supabase
       .from('candidates')
       .update(data)
@@ -146,6 +153,22 @@ export const candidateRepository = {
       .single();
     if (error) throw error;
     return updated as CandidateRow;
+  },
+
+  async updateScoresAndSocials(id: string, data: {
+    jury_ecriture: number;
+    jury_technique: number;
+    jury_attitude: number;
+    jury_originalite: number;
+    social_likes: number;
+    social_comments: number;
+    social_shares: number;
+  }) {
+    const { error } = await supabase
+      .from('candidates')
+      .update(data)
+      .eq('id', id);
+    if (error) throw error;
   },
 
   async delete(id: string) {
