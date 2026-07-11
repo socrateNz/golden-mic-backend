@@ -104,7 +104,7 @@ export const candidateRepository = {
     if (error) throw error;
   },
 
-  async create(data: Omit<CandidateRow, 'id' | 'total_points' | 'vote_count' | 'rank' | 'created_at' | 'updated_at'>) {
+  async create(data: Omit<CandidateRow, 'id' | 'total_points' | 'vote_count' | 'rank' | 'created_at' | 'updated_at' | 'note_totale' | 'jury_ecriture' | 'jury_technique' | 'jury_attitude' | 'jury_originalite' | 'social_likes' | 'social_comments' | 'social_shares'>) {
     const { data: created, error } = await supabase
       .from('candidates')
       .insert(data)
