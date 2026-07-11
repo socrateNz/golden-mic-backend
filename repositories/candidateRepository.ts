@@ -26,6 +26,7 @@ export interface CandidateRow {
   rank: number | null;
   created_at: string;
   updated_at: string;
+  note_totale: number;
   jury_ecriture: number;
   jury_technique: number;
   jury_attitude: number;
@@ -59,7 +60,7 @@ export const candidateRepository = {
     }
 
     const sortMap: Record<string, string> = {
-      points: 'total_points',
+      points: 'note_totale',
       votes: 'vote_count',
       recent: 'created_at',
     };
@@ -116,9 +117,9 @@ export const candidateRepository = {
   async getLeaderboard(limit = 50) {
     const { data, error } = await supabase
       .from('candidates')
-      .select('id, artist_name, slug, photo_url, total_points, vote_count, rank, region, categories(name)')
+      .select('id, artist_name, slug, photo_url, total_points, note_totale, vote_count, rank, region, categories(name)')
       .eq('status', 'approved')
-      .order('total_points', { ascending: false })
+      .order('note_totale', { ascending: false })
       .limit(limit);
     if (error) throw error;
     return data;
