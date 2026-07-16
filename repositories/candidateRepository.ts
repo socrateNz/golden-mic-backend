@@ -23,6 +23,7 @@ export interface CandidateRow {
   status: 'pending' | 'approved' | 'rejected' | 'suspended';
   rejection_reason: string | null;
   is_trending: boolean;
+  is_eliminated: boolean;
   rank: number | null;
   created_at: string;
   updated_at: string;
@@ -34,6 +35,14 @@ export interface CandidateRow {
   social_likes: number;
   social_comments: number;
   social_shares: number;
+  phase_vote_points: number;
+  phase_jury_ecriture: number;
+  phase_jury_technique: number;
+  phase_jury_attitude: number;
+  phase_jury_originalite: number;
+  phase_social_likes: number;
+  phase_social_comments: number;
+  phase_social_shares: number;
   categories?: { name: string; slug: string } | null;
 }
 
@@ -49,7 +58,8 @@ export const candidateRepository = {
     let query = supabase
       .from('candidates')
       .select('*, categories(name, slug)', { count: 'exact' })
-      .eq('status', 'approved');
+      .eq('status', 'approved')
+      .eq('is_eliminated', false); // Ne pas afficher les éliminés sur la page publique
 
     if (params.region) query = query.eq('region', params.region);
     if (params.categoryId) query = query.eq('category_id', params.categoryId);
@@ -64,7 +74,7 @@ export const candidateRepository = {
       votes: 'vote_count',
       recent: 'created_at',
     };
-    query = query.order(sortMap[params.sort] ?? 'total_points', { ascending: false });
+    query = query.order(sortMap[params.sort] ?? 'note_totale', { ascending: false });
 
     const offset = (params.page - 1) * params.limit;
     query = query.range(offset, offset + params.limit - 1);
@@ -104,7 +114,7 @@ export const candidateRepository = {
     if (error) throw error;
   },
 
-  async create(data: Omit<CandidateRow, 'id' | 'total_points' | 'vote_count' | 'rank' | 'created_at' | 'updated_at' | 'note_totale' | 'jury_ecriture' | 'jury_technique' | 'jury_attitude' | 'jury_originalite' | 'social_likes' | 'social_comments' | 'social_shares'>) {
+  async create(data: any) {
     const { data: created, error } = await supabase
       .from('candidates')
       .insert(data)
@@ -117,8 +127,9 @@ export const candidateRepository = {
   async getLeaderboard(limit = 50) {
     const { data, error } = await supabase
       .from('candidates')
-      .select('id, artist_name, slug, photo_url, total_points, note_totale, vote_count, rank, region, categories(name)')
+      .select('id, artist_name, slug, photo_url, phase_vote_points, note_totale, vote_count, rank, region, categories(name)')
       .eq('status', 'approved')
+      .eq('is_eliminated', false) // Exclure du leaderboard
       .order('note_totale', { ascending: false })
       .limit(limit);
     if (error) throw error;
@@ -145,7 +156,7 @@ export const candidateRepository = {
     if (error) throw error;
   },
 
-  async update(id: string, data: Partial<Omit<CandidateRow, 'id' | 'total_points' | 'vote_count' | 'rank' | 'created_at' | 'updated_at' | 'jury_ecriture' | 'jury_technique' | 'jury_attitude' | 'jury_originalite' | 'social_likes' | 'social_comments' | 'social_shares'>>) {
+  async update(id: string, data: any) {
     const { data: updated, error } = await supabase
       .from('candidates')
       .update(data)
@@ -165,9 +176,26 @@ export const candidateRepository = {
     social_comments: number;
     social_shares: number;
   }) {
+    // We update both the historical and the current phase columns
     const { error } = await supabase
       .from('candidates')
-      .update(data)
+      .update({
+        jury_ecriture: data.jury_ecriture,
+        jury_technique: data.jury_technique,
+        jury_attitude: data.jury_attitude,
+        jury_originalite: data.jury_originalite,
+        social_likes: data.social_likes,
+        social_comments: data.social_comments,
+        social_shares: data.social_shares,
+        // Update phase specific scores as well
+        phase_jury_ecriture: data.jury_ecriture,
+        phase_jury_technique: data.jury_technique,
+        phase_jury_attitude: data.jury_attitude,
+        phase_jury_originalite: data.jury_originalite,
+        phase_social_likes: data.social_likes,
+        phase_social_comments: data.social_comments,
+        phase_social_shares: data.social_shares,
+      })
       .eq('id', id);
     if (error) throw error;
   },
@@ -180,3 +208,4 @@ export const candidateRepository = {
     if (error) throw error;
   },
 };
+

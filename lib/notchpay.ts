@@ -82,8 +82,6 @@ export async function createNotchPayTransaction(params: CreateTransactionParams)
     amount: params.amount,
     currency: 'XAF',
     email: params.email,
-    phone: params.phone,
-    paymentPhone: params.phone,
     reference: params.reference,
     description: params.description,
     callback: params.callbackUrl,
@@ -93,6 +91,13 @@ export async function createNotchPayTransaction(params: CreateTransactionParams)
       payment_expires_at: params.paymentExpiresAtIso || new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     },
   };
+
+  // To prevent NotchPay API validation errors ("The phone field must be a valid number"),
+  // we only send the phone field if it is a Cameroonian number. For international numbers,
+  // users can still pay via Credit Card on the checkout page.
+  if (formattedPhone.startsWith('+237')) {
+    notchPayload.phone = formattedPhone;
+  }
 
   if (process.env.NOTCHPAY_PAYMENT_SEND_EXPIRES_AT === '1' || process.env.NOTCHPAY_PAYMENT_SEND_EXPIRES_AT === 'true') {
     if (params.paymentExpiresAtIso) {
