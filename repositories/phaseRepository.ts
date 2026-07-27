@@ -33,14 +33,18 @@ export const phaseRepository = {
     return data as GamePhaseRow[];
   },
 
+  async getCandidatePhaseHistory(candidateId: string) {
+    const { data, error } = await supabase
+      .from('candidate_phase_scores')
+      .select('*')
+      .eq('candidate_id', candidateId)
+      .order('created_at', { ascending: true });
+      
+    if (error) throw error;
+    return data;
+  },
+
   async transitionPhase(nextPhaseName: string, eliminationCount: number) {
-    // We should ideally do this in a single transaction or an RPC to be safe,
-    // but we can do it via API since Supabase JS client doesn't support 
-    // explicit transactions from the frontend unless we use an RPC.
-    // For simplicity, we'll do it sequentially here, or better, we create an RPC.
-    
-    // We will do it sequentially since it's an admin operation and traffic is low during transition.
-    
     const activePhase = await this.getActivePhase();
 
     // 1. Find candidates to eliminate
@@ -65,8 +69,49 @@ export const phaseRepository = {
       if (err2) throw err2;
     }
 
-    // 3. Mark current phase as completed
+    // 3. Save snapshot in history table before resetting
     if (activePhase) {
+      const { data: currentCandidates } = await supabase
+        .from('candidates')
+        .select('*')
+        .eq('status', 'approved');
+
+      if (currentCandidates && currentCandidates.length > 0) {
+        const historyRows = currentCandidates.map(c => {
+          const isEliminatedNow = idsToEliminate.includes(c.id) || c.is_eliminated;
+          const votePoints = c.phase_vote_points || 0;
+          const juryE = c.phase_jury_ecriture || c.jury_ecriture || 0;
+          const juryT = c.phase_jury_technique || c.jury_technique || 0;
+          const juryA = c.phase_jury_attitude || c.jury_attitude || 0;
+          const juryO = c.phase_jury_originalite || c.jury_originalite || 0;
+          const sLikes = c.phase_social_likes || c.social_likes || 0;
+          const sComments = c.phase_social_comments || c.social_comments || 0;
+          const sShares = c.phase_social_shares || c.social_shares || 0;
+          const totalScore = votePoints + juryE + juryT + juryA + juryO + sLikes + (sComments * 2) + (sShares * 5);
+
+          return {
+            candidate_id: c.id,
+            phase_id: activePhase.id,
+            phase_name: activePhase.name,
+            vote_points: votePoints,
+            jury_ecriture: juryE,
+            jury_technique: juryT,
+            jury_attitude: juryA,
+            jury_originalite: juryO,
+            social_likes: sLikes,
+            social_comments: sComments,
+            social_shares: sShares,
+            total_score: totalScore,
+            is_eliminated_in_phase: isEliminatedNow,
+          };
+        });
+
+        await supabase
+          .from('candidate_phase_scores')
+          .upsert(historyRows, { onConflict: 'candidate_id,phase_id' });
+      }
+
+      // Mark current phase as completed
       const { error: err3 } = await supabase
         .from('game_phases')
         .update({ 
