@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Si la transaction est en attente, on interroge NotchPay de manière synchrone
+    // Si la transaction est en attente, on interroge MoneyFusion de manière synchrone
     // pour pallier aux éventuels retards de webhook et utiliser la ref appropriée
     if (transaction.status === 'pending' || transaction.status === 'processing') {
       const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? '127.0.0.1';

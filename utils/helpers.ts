@@ -14,13 +14,15 @@ export function calculatePoints(amountFcfa: number): number {
 }
 
 /**
- * Vérifie la signature HMAC-SHA256 d'un webhook NotchPay.
+ * MoneyFusion ne signe pas ses webhooks. En protection, l'URL de webhook qu'on
+ * lui transmet embarque un secret en query param ; on vérifie ici qu'il
+ * correspond avant de traiter la requête. Ça ne remplace pas la vérification
+ * du statut auprès de MoneyFusion (source de vérité), c'est un filtre en amont.
  */
-export function verifyWebhookSignature(rawBody: string, signature: string, secret: string): boolean {
-  const hmac = crypto.createHmac('sha256', secret);
-  const expected = hmac.update(rawBody).digest('hex');
+export function verifyWebhookSecret(received: string | null, expected: string): boolean {
+  if (!received) return false;
   try {
-    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+    return crypto.timingSafeEqual(Buffer.from(received), Buffer.from(expected));
   } catch {
     return false;
   }

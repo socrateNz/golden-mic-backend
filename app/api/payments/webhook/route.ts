@@ -1,82 +1,63 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { voteService } from '@/services/voteService';
-import { verifyWebhookSignature } from '@/utils/helpers';
+import { verifyWebhookSecret } from '@/utils/helpers';
 import { auditRepository } from '@/repositories/auditRepository';
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
-  const signature = req.headers.get('x-notch-signature') ?? '';
-  const webhookSecret = process.env.NOTCHPAY_WEBHOOK_HASH!;
+  const receivedKey = new URL(req.url).searchParams.get('key');
+  const webhookSecret = process.env.MONEYFUSION_WEBHOOK_SECRET;
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? '127.0.0.1';
   const userAgent = req.headers.get('user-agent') ?? 'webhook';
 
   let event: Record<string, unknown>;
-  let eventType = 'unknown';
-  let reference = 'unknown';
 
   try {
     event = JSON.parse(rawBody);
-    eventType = (event.event ?? event.type ?? 'unknown') as string;
-    reference = ((event.data as any)?.reference ?? event.reference ?? 'unknown') as string;
   } catch {
     console.error('[webhook:parse-error] JSON invalide');
     return NextResponse.json({ error: 'Corps JSON invalide' }, { status: 400 });
   }
 
-  // Logging du webhook reçu
-  console.log('[webhook:received]', {
-    event: eventType,
-    reference,
-    timestamp: new Date().toISOString(),
-  });
+  console.log('[webhook:received]', { timestamp: new Date().toISOString() });
 
-  // 1. Validation de la signature HMAC-SHA256
-  if (!signature || !verifyWebhookSignature(rawBody, signature, webhookSecret)) {
-    console.error('[webhook:signature-invalid]', {
-      event: eventType,
-      reference,
-      signatureReceived: signature ? signature.slice(0, 10) + '...' : 'none',
-    });
+  // 1. MoneyFusion ne signe pas ses webhooks : on filtre via le secret embarqué
+  // dans l'URL de webhook qu'on lui a fournie à l'initiation du paiement.
+  if (webhookSecret && !verifyWebhookSecret(receivedKey, webhookSecret)) {
+    console.error('[webhook:secret-invalid]');
 
     await auditRepository.logFraud({
       ip_address: ip,
       user_agent: userAgent,
-      attempt_type: 'invalid_webhook_signature',
-      details: { signature: signature.slice(0, 10) + '...', event: eventType, reference },
+      attempt_type: 'invalid_webhook_secret',
+      details: {},
     });
-    
-    // Retourne 200 quand même pour ne pas que NotchPay renvoit indéfiniment
-    return NextResponse.json({ received: true, error: 'Signature invalide' }, { status: 200 });
+
+    // Retourne 200 quand même pour ne pas que MoneyFusion renvoie indéfiniment
+    return NextResponse.json({ received: true, error: 'Secret invalide' }, { status: 200 });
   }
 
   try {
+    // Le corps du webhook n'est de toute façon jamais utilisé comme source de vérité :
+    // voteService.processWebhook relit systématiquement le statut auprès de MoneyFusion.
     const result = await voteService.processWebhook(event, { ipAddress: ip, userAgent });
-    
-    console.log('[webhook:processed]', {
-      event: eventType,
-      reference,
-      processed: (result as any).processed,
-      status: (result as any).status,
-    });
 
-    return NextResponse.json({ received: true, ...result }, { status: 200 });
+    console.log('[webhook:processed]', result);
+
+    return NextResponse.json(result, { status: 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erreur traitement webhook';
-    console.error('[webhook:processing-error]', {
-      event: eventType,
-      reference,
-      error: message,
-    });
+    console.error('[webhook:processing-error]', { error: message });
 
     await auditRepository.log({
       event_type: 'webhook.error',
       actor_type: 'webhook',
-      details: { error: message, event: eventType, reference },
+      details: { error: message },
       ip_address: ip,
       severity: 'error',
     });
-    
-    // Retourne 200 pour éviter que NotchPay ne renvoie indéfiniment
+
+    // Retourne 200 pour éviter que MoneyFusion ne renvoie indéfiniment
     return NextResponse.json({ received: true, error: message }, { status: 200 });
   }
 }

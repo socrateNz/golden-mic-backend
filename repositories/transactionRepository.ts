@@ -11,6 +11,7 @@ export interface TransactionRow {
   currency: string;
   status: 'pending' | 'processing' | 'complete' | 'failed' | 'cancelled';
   payment_method: string | null;
+  /** Colonnes historiques (ex-NotchPay) : stockent désormais le token MoneyFusion et sa réponse brute. */
   notchpay_id: string | null;
   notchpay_response: Record<string, unknown> | null;
   webhook_received_at: string | null;
@@ -19,7 +20,7 @@ export interface TransactionRow {
   user_agent: string | null;
   points_awarded: number;
   idempotency_key: string | null;
-  /** Fin de validité de la session de paiement (TTL côté app, voir NOTCHPAY_PAYMENT_TTL_MINUTES). */
+  /** Fin de validité de la session de paiement (TTL côté app, voir MONEYFUSION_PAYMENT_TTL_MINUTES). */
   payment_expires_at?: string | null;
   created_at: string;
   updated_at: string;
@@ -78,7 +79,11 @@ export const transactionRepository = {
     if (error) throw error;
   },
 
-  async markWebhookValidated(id: string, notchpayResponse: Record<string, unknown>) {
+  async markWebhookValidated(
+    id: string,
+    notchpayResponse: Record<string, unknown>,
+    extra?: Partial<TransactionRow>
+  ) {
     const { error } = await supabase
       .from('transactions')
       .update({
@@ -86,6 +91,7 @@ export const transactionRepository = {
         webhook_received_at: new Date().toISOString(),
         notchpay_response: notchpayResponse,
         status: 'complete',
+        ...extra,
       })
       .eq('id', id);
     if (error) throw error;
