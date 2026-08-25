@@ -308,19 +308,12 @@ export const voteService = {
           return;
         }
 
-        if (isPaymentSessionExpired(row)) {
-          await expirePaymentSessionLocally(row, reference, meta);
-          return;
-        }
-
+        // On vérifie TOUJOURS le statut authentique avant de considérer la session
+        // expirée : un paiement peut se confirmer tardivement (webhook lent, incident
+        // réseau) et ne doit jamais être annulé localement s'il a en réalité abouti.
         const status = row.notchpay_id ? await fetchMoneyFusionTransactionStatus(row.notchpay_id) : null;
 
-        if (!status) {
-          await sleep(AGGREGATOR_POLL_INTERVAL_MS);
-          continue;
-        }
-
-        if (status.status === 'paid') {
+        if (status?.status === 'paid') {
           try {
             await finalizeFromPaymentData(
               { reference, amount: status.amount ?? row.amount, method: status.method, raw: status.raw },
@@ -335,8 +328,13 @@ export const voteService = {
           return;
         }
 
-        if (status.status === 'failed' || status.status === 'no paid') {
+        if (status?.status === 'failed' || status?.status === 'no paid') {
           await applyFailedPaymentIfPending(row, finalizeMeta);
+          return;
+        }
+
+        if (isPaymentSessionExpired(row)) {
+          await expirePaymentSessionLocally(row, reference, meta);
           return;
         }
 
@@ -362,19 +360,13 @@ export const voteService = {
       return row;
     }
 
-    if (isPaymentSessionExpired(row)) {
-      await expirePaymentSessionLocally(row, reference, meta);
-      return await transactionRepository.findByReference(reference);
-    }
-
+    // On vérifie TOUJOURS le statut authentique avant de considérer la session
+    // expirée : un paiement peut se confirmer tardivement et ne doit jamais être
+    // annulé localement s'il a en réalité abouti chez MoneyFusion.
     const status = row.notchpay_id ? await fetchMoneyFusionTransactionStatus(row.notchpay_id) : null;
     const finalizeMeta = { ...meta, actorType: 'system' as const };
 
-    if (!status) {
-      return row; // Ne rien faire si introuvable chez MoneyFusion
-    }
-
-    if (status.status === 'paid') {
+    if (status?.status === 'paid') {
       try {
         await finalizeFromPaymentData(
           { reference, amount: status.amount ?? row.amount, method: status.method, raw: status.raw },
@@ -383,8 +375,10 @@ export const voteService = {
       } catch (err) {
         console.error('[vote:sync] finalisation impossible', { reference, error: err });
       }
-    } else if (status.status === 'failed' || status.status === 'no paid') {
+    } else if (status?.status === 'failed' || status?.status === 'no paid') {
       await applyFailedPaymentIfPending(row, finalizeMeta);
+    } else if (isPaymentSessionExpired(row)) {
+      await expirePaymentSessionLocally(row, reference, meta);
     }
 
     // Retourne l'état mis à jour
