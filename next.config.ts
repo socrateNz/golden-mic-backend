@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   async headers() {
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
     return [
