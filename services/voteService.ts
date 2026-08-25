@@ -117,7 +117,15 @@ async function finalizeFromPaymentData(
     return { message: 'Déjà traité', alreadyProcessed: true };
   }
 
-  if (Math.abs(amount - transaction.amount) > 0) {
+  // MoneyFusion renvoie le montant NET (après ses propres frais de transaction),
+  // pas le montant brut facturé au client — donc `amount` (issu de son API) est
+  // structurellement inférieur à `transaction.amount` (notre montant de référence).
+  // Comparer les deux à l'identique déclencherait un faux positif sur CHAQUE paiement.
+  // La sécurité vient du lookup par token (`notchpay_id`), stocké par nous à
+  // l'initiation et jamais fourni par l'appelant : on ne peut donc pas usurper la
+  // transaction d'un tiers via ce chemin. On garde juste une alerte si l'écart
+  // dépasse largement ce qu'un taux de frais plausible expliquerait.
+  if (amount < transaction.amount * 0.5) {
     await auditRepository.logFraud({
       ip_address: meta.ipAddress,
       user_agent: meta.userAgent,
