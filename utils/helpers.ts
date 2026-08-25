@@ -4,11 +4,12 @@ import crypto from 'crypto';
  * Calcule les points à partir d'un montant en FCFA.
  * RÈGLE OFFICIELLE : 100 FCFA = 10 points
  * Formule : points = montant / 10
+ * Minimum 200 FCFA imposé par MoneyFusion (rejette tout montant inférieur).
  * Ne jamais appeler côté frontend.
  */
 export function calculatePoints(amountFcfa: number): number {
-  if (amountFcfa < 100) {
-    throw new Error('Montant minimum 100 FCFA');
+  if (amountFcfa < 200) {
+    throw new Error('Montant minimum 200 FCFA');
   }
   return Math.floor(amountFcfa / 10);
 }

@@ -93,7 +93,9 @@ export interface MoneyFusionTransactionStatus {
 export async function fetchMoneyFusionTransactionStatus(
   token: string
 ): Promise<MoneyFusionTransactionStatus | null> {
-  const res = await fetch(`https://www.pay.moneyfusion.net/paiementNotif/${encodeURIComponent(token)}`, {
+  // Le sous-domaine "www." a un certificat TLS invalide côté MoneyFusion ; on utilise
+  // le même domaine que MONEYFUSION_API_URL (sans www), qui répond correctement.
+  const res = await fetch(`https://pay.moneyfusion.net/paiementNotif/${encodeURIComponent(token)}`, {
     method: 'GET',
   });
 

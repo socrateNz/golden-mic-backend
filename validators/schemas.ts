@@ -5,7 +5,7 @@ export const initiateVoteSchema = z.object({
   amount: z
     .number({ message: 'Le montant est requis' })
     .int()
-    .min(100, 'Montant minimum 100 FCFA')
+    .min(200, 'Montant minimum 200 FCFA')
     .max(1_000_000, 'Montant maximum 1 000 000 FCFA'),
   voterName: z.string().min(2).max(100).optional(),
   voterEmail: z.string().email().optional(),
