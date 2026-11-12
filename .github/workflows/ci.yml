@@ -1,0 +1,69 @@
+name: CI et déploiement
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    # Valeurs factices : la compilation a seulement besoin que les variables existent.
+    # Ne JAMAIS mettre de vrais secrets ici.
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      SUPABASE_URL: https://ci-dummy.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ci-dummy-service-role-key
+      MONEYFUSION_API_URL: https://ci.invalid/pay/
+      MONEYFUSION_WEBHOOK_SECRET: ci-dummy
+      CLOUDINARY_CLOUD_NAME: ci
+      CLOUDINARY_API_KEY: ci
+      CLOUDINARY_API_SECRET: ci
+      UPSTASH_REDIS_REST_URL: https://ci-dummy.upstash.io
+      UPSTASH_REDIS_REST_TOKEN: ci-dummy
+      RESEND_API_KEY: re_ci_dummy
+      RESEND_FROM_EMAIL: ci@example.com
+      FRONTEND_URL: http://localhost:3004
+      BACKEND_URL: http://localhost:3005
+      ADMIN_JWT_SECRET: ci-dummy-admin-secret
+    steps:
+      - uses: actions/checkout@v4
+      # Même version de Node que sur le VPS
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Lint (non bloquant)
+        run: npm run lint
+        continue-on-error: true
+      - name: Compilation
+        run: npm run build
+
+  # Uniquement sur push vers main, et si `ci` a réussi. La clé confiée à GitHub ne peut que
+  # lancer ~/scripts/deployer-golden-mic.sh back (commande forcée dans authorized_keys).
+  deployer:
+    name: Déploiement sur le VPS
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploiement-production
+      cancel-in-progress: false
+    steps:
+      - name: Déployer le commit testé
+        env:
+          VPS_DEPLOY_KEY: ${{ secrets.VPS_DEPLOY_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_DEPLOY_KEY" > ~/.ssh/deploiement
+          chmod 600 ~/.ssh/deploiement
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          echo "Clé de déploiement : $(ssh-keygen -lf ~/.ssh/deploiement 2>&1)"
+          echo "Identité du serveur attendue : $(ssh-keygen -lf ~/.ssh/known_hosts 2>&1)"
+          HOTE=$(printf '%s' "$VPS_HOST" | tr -d '[:space:]')
+          ssh -i ~/.ssh/deploiement -o IdentitiesOnly=yes -o BatchMode=yes -o ServerAliveInterval=30 \
+            "etarcosdev@${HOTE}" "${GITHUB_SHA}"
